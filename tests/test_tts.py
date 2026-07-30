@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -11,27 +11,35 @@ def test_tts_empty_text_returns_400():
     assert response.status_code in (400, 422)
 
 
-def test_tts_missing_api_key_handling():
-    """Test POST /text-to-speech without valid API key returns proper error message."""
+def test_sarvam_tts_missing_api_key_handling():
+    """Test POST /text-to-speech without valid API key returns proper error."""
     response = client.post("/text-to-speech", json={"text": "Hello OpsMonit"})
-    # Without valid API key, should return 400 with descriptive error detail
     assert response.status_code == 400
-    assert "ElevenLabs API Key" in response.json()["detail"]
+    assert "Sarvam API Key" in response.json()["detail"]
 
 
-def test_tts_cached_response(tmp_path, monkeypatch):
-    """Test cached TTS response when cache file already exists."""
+def test_sarvam_tts_cached_response(tmp_path):
+    """Test cached Sarvam TTS response when cache file already exists."""
     from app.config import settings
 
     # Setup dummy cache file
-    cache_file = "cache_8e2f810aa7be6632.mp3"
+    cache_file = "sarvam_cache_test12345.wav"
     cache_filepath = settings.AUDIO_OUTPUT_DIR / cache_file
-    cache_filepath.write_bytes(b"mock_mp3_data")
+    cache_filepath.write_bytes(b"mock_wav_data")
 
-    # Mock the cache filename calculation to return our dummy file
+    mock_service_return = {
+        "audio_file": cache_file,
+        "audio_url": f"/audio/{cache_file}",
+        "cached": True,
+        "response_time_ms": 1.5,
+        "language_code": "hi-IN",
+        "speaker": "meera",
+    }
+
     with patch(
-        "app.services.elevenlabs_service.elevenlabs_service._get_cache_filename",
-        return_value=cache_file,
+        "app.routes.tts.sarvam_service.generate_speech",
+        new_callable=AsyncMock,
+        return_value=mock_service_return,
     ):
         response = client.post(
             "/text-to-speech",
