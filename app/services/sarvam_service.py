@@ -7,6 +7,7 @@ import httpx
 
 from app.config.settings import settings
 from app.utils.logger import logger
+from app.utils.sanitizer import sanitize_for_tts
 
 
 class SarvamService:
@@ -77,6 +78,8 @@ class SarvamService:
         Saves decoded audio file and returns metadata.
         """
         start_time = time.time()
+        api_key = self._get_api_key()
+        text = sanitize_for_tts(text, max_length=400)
         target_language_code = target_language_code or settings.DEFAULT_SARVAM_LANGUAGE
         speaker = speaker or settings.DEFAULT_SARVAM_SPEAKER
         model = model or settings.DEFAULT_SARVAM_MODEL

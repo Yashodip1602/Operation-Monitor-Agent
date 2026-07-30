@@ -8,6 +8,7 @@ from app.services.jenkins_client import JenkinsClient, JenkinsClientError, jenki
 from app.services.jenkins_browser import JenkinsBrowserError, check_build_status, stop_build_via_ui, trigger_build_via_ui
 from app.services.sarvam_service import sarvam_service
 from app.utils.logger import logger
+from app.utils.sanitizer import GENERIC_ERROR_TTS, sanitize_for_tts
 
 router = APIRouter(prefix="/voice-agent", tags=["Voice Agent & Jenkins Automation"])
 
@@ -39,7 +40,8 @@ class VoiceAgentResponse(BaseModel):
 async def _generate_spoken_response(text: str, target_language_code: Optional[str] = None) -> Dict[str, Any]:
     """Helper to convert response text string into spoken TTS audio."""
     try:
-        return await sarvam_service.generate_speech(text=text, target_language_code=target_language_code)
+        sanitized = sanitize_for_tts(text, max_length=400)
+        return await sarvam_service.generate_speech(text=sanitized, target_language_code=target_language_code)
     except Exception as e:
         logger.error(f"Failed to generate TTS audio for voice response: {e}")
         return {"audio_file": None, "audio_url": None}
@@ -121,17 +123,17 @@ async def _execute_voice_pipeline(
 
     except JenkinsBrowserError as jbe:
         logger.error(f"Jenkins browser automation error during voice command processing: {jbe}")
-        response_text = f"Jenkins browser operation failed: {str(jbe)}"
+        response_text = sanitize_for_tts(f"Jenkins browser operation failed: {str(jbe)}", max_length=200)
         execution_status = "ERROR"
 
     except JenkinsClientError as jce:
         logger.error(f"Jenkins action error during voice command processing: {jce}")
-        response_text = f"Jenkins operation failed: {str(jce)}"
+        response_text = sanitize_for_tts(f"Jenkins operation failed: {str(jce)}", max_length=200)
         execution_status = "ERROR"
 
     except Exception as e:
         logger.error(f"Unexpected error executing voice command: {e}", exc_info=True)
-        response_text = f"An unexpected error occurred: {str(e)}"
+        response_text = sanitize_for_tts(f"An unexpected error occurred: {str(e)}", max_length=200)
         execution_status = "ERROR"
 
     # Log Jenkins action
