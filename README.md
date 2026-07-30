@@ -1,18 +1,18 @@
-# OpsMonit Backend with ElevenLabs TTS Integration
+# OpsMonit Backend with Sarvam AI Integration
 
-Production-ready FastAPI backend for **OpsMonit**, enabling realistic text-to-speech (TTS) audio generation via ElevenLabs API, file caching, audio streaming, and high-performance endpoints designed for Kotlin mobile and desktop client applications.
+Production-ready FastAPI backend for **OpsMonit**, supporting **Sarvam AI** for **Text-to-Speech (TTS)** and **Speech-to-Text (STT)** audio processing, file caching, audio streaming, Jenkins browser automation, and high-performance REST APIs.
 
 ---
 
 ## Features
 
-- **Realistic Speech Synthesis**: Integrates with ElevenLabs API (`eleven_multilingual_v2` model and custom voice IDs).
-- **Audio File Caching**: SHA-256 hash-based caching to avoid redundant API credit usage.
-- **Real-Time Streaming**: `/text-to-speech/stream` endpoint for ultra-low latency streaming playback.
-- **Static File Serving**: Serves generated `.mp3` files at `/audio/{filename}`.
-- **Response Time Logging & Metrics**: Custom middleware tracking processing duration in milliseconds.
-- **CORS Enabled**: Configured for cross-origin access from mobile and web apps.
-- **Docker Support**: Containerized for seamless deployment.
+- **Sarvam AI Text-to-Speech (TTS)**: Realistic multi-language speech synthesis (`bulbul:v1` model, support for Indian languages like Hindi `hi-IN`, English `en-IN`, Tamil `ta-IN`, Telugu `te-IN`, etc.).
+- **Sarvam AI Speech-to-Text (STT)**: High-accuracy audio transcription endpoint (`saaras:v1` model) supporting audio file uploads (WAV, MP3, M4A, FLAC, OGG).
+- **Jenkins Browser Automation**: Automation for Jenkins build triggering, status checking, and stopping via Selenium.
+- **Deterministic Audio File Caching**: SHA-256 hash-based caching to prevent redundant API credit consumption.
+- **Real-Time Audio Streaming**: `/text-to-speech/stream` endpoint for ultra-low latency streaming playback.
+- **Static File Serving**: Serves generated `.wav` files at `/audio/{filename}`.
+- **Middleware Metrics**: Tracks HTTP request processing time in milliseconds.
 
 ---
 
@@ -24,18 +24,25 @@ opsmonit-backend/
  │   ├── main.py
  │   ├── routes/
  │   │    ├── health.py
- │   │    └── tts.py
+ │   │    ├── tts.py
+ │   │    ├── stt.py
+ │   │    ├── mic.py
+ │   │    └── voice_agent.py
  │   ├── services/
- │   │    └── elevenlabs_service.py
+ │   │    ├── sarvam_service.py
+ │   │    ├── jenkins_client.py
+ │   │    └── jenkins_browser.py
  │   ├── config/
  │   │    └── settings.py
  │   └── utils/
  │        └── logger.py
  ├── tests/
  │   ├── test_health.py
- │   └── test_tts.py
+ │   ├── test_tts.py
+ │   └── test_stt.py
  ├── .env
  ├── .env.example
+ ├── .gitignore
  ├── Dockerfile
  ├── requirements.txt
  └── README.md
@@ -45,20 +52,32 @@ opsmonit-backend/
 
 ## Setup & Environment Configuration
 
-### 1. Clone & Set Environment Variables
+### 1. Set Environment Variables
 
-Create `.env` file from `.env.example`:
+Copy `.env.example` to `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Configure your ElevenLabs API key in `.env`:
+Configure your Sarvam AI API key in `.env`:
 
 ```env
-ELEVENLABS_API_KEY=your_actual_elevenlabs_api_key_here
+# Sarvam AI Settings
+SARVAM_API_KEY=your_sarvam_api_key_here
+SARVAM_TTS_URL=https://api.sarvam.ai/text-to-speech
+SARVAM_STT_URL=https://api.sarvam.ai/speech-to-text
+DEFAULT_SARVAM_MODEL=bulbul:v1
+DEFAULT_SARVAM_SPEAKER=meera
+DEFAULT_SARVAM_LANGUAGE=hi-IN
+DEFAULT_STT_MODEL=saaras:v1
+
+# ElevenLabs Settings
+ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 DEFAULT_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
 DEFAULT_MODEL_ID=eleven_multilingual_v2
+
+# Server Configuration
 AUDIO_OUTPUT_DIR=app/static/audio
 CACHE_ENABLED=True
 HOST=0.0.0.0
@@ -70,8 +89,6 @@ PORT=8000
 ## Local Development
 
 ### 2. Install Dependencies
-
-It is recommended to use a Python virtual environment:
 
 ```bash
 python3 -m venv venv
@@ -85,104 +102,67 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Interactive Swagger documentation will be available at:
+Interactive Swagger documentation:
 👉 **[http://localhost:8000/docs](http://localhost:8000/docs)**
-
----
-
-## Docker Deployment
-
-Build and run using Docker:
-
-```bash
-# Build image
-docker build -t opsmonit-backend .
-
-# Run container
-docker run -d -p 8000:8000 --env-file .env --name opsmonit-backend opsmonit-backend
-```
 
 ---
 
 ## API Endpoints
 
 ### 1. Health Check
-
 - **URL**: `GET /health`
-- **Response**:
-```json
-{
-  "status": "ok"
-}
-```
+- **Response**: `{"status": "ok"}`
 
-### 2. Text to Speech API
-
+### 2. Text to Speech (TTS)
 - **URL**: `POST /text-to-speech`
-- **Header**: `Content-Type: application/json`
 - **Request Body**:
 ```json
 {
-  "text": "Server is running successfully",
-  "voice_id": "JBFqnCBsd6RMkjVDRZzb",
-  "model_id": "eleven_multilingual_v2"
+  "text": "नमस्ते OpsMonit, सर्वर सुचारू रूप से चल रहा है।",
+  "provider": "sarvam",
+  "target_language_code": "hi-IN",
+  "speaker": "meera",
+  "pace": 1.0,
+  "pitch": 0.0
 }
 ```
 - **Response Body**:
 ```json
 {
-  "audio_file": "cache_a1b2c3d4e5f67890.mp3",
-  "audio_url": "/audio/cache_a1b2c3d4e5f67890.mp3",
+  "audio_file": "sarvam_cache_a1b2c3d4e5f6.wav",
+  "audio_url": "/audio/sarvam_cache_a1b2c3d4e5f6.wav",
   "cached": false,
-  "response_time_ms": 342.15
+  "response_time_ms": 350.2,
+  "language_code": "hi-IN",
+  "speaker": "meera"
 }
 ```
 
-### 3. Stream Audio Endpoint
-
+### 3. Stream Text to Speech
 - **URL**: `POST /text-to-speech/stream`
-- **Header**: `Content-Type: application/json`
-- **Request Body**:
+- **Request Body**: `{"text": "Attention: High memory alert.", "provider": "sarvam"}`
+- **Response**: `audio/wav` stream
+
+### 4. Speech to Text (STT)
+- **URL**: `POST /speech-to-text`
+- **Content-Type**: `multipart/form-data`
+- **Form Fields**:
+  - `file`: Audio file binary (e.g. `recording.wav`, `sample.mp3`)
+  - `language_code`: Optional (e.g. `hi-IN`, `en-IN`)
+  - `model`: Optional (e.g. `saaras:v1`)
+- **cURL Example**:
+```bash
+curl -X POST "http://localhost:8000/speech-to-text" \
+  -F "file=@audio.wav" \
+  -F "language_code=hi-IN"
+```
+- **Response Body**:
 ```json
 {
-  "text": "Alert: CPU usage exceeded 90% threshold"
+  "transcript": "सर्वर स्थिति सामान्य है।",
+  "language_code": "hi-IN",
+  "response_time_ms": 410.8
 }
-```
-- **Response**: `audio/mpeg` stream
-
----
-
-## Kotlin Android Integration Example
-
-```kotlin
-// OkHttp request example to invoke OpsMonit TTS endpoint
-val client = OkHttpClient()
-val json = """
-    {
-        "text": "OpsMonit agent alert: System memory usage normal."
-    }
-""".trimIndent()
-
-val requestBody = json.toRequestBody("application/json".toMediaType())
-val request = Request.Builder()
-    .url("http://<YOUR_BACKEND_IP>:8000/text-to-speech")
-    .post(requestBody)
-    .build()
-
-client.newCall(request).enqueue(object : Callback {
-    override fun onFailure(call: Call, e: IOException) {
-        println("TTS Error: ${e.message}")
-    }
-
-    override fun onResponse(call: Call, response: Response) {
-        response.body?.string()?.let { responseBody ->
-            val jsonObject = JSONObject(responseBody)
-            val audioFile = jsonObject.getString("audio_file")
-            val audioUrl = "http://<YOUR_BACKEND_IP>:8000/audio/$audioFile"
-            println("Audio available at: $audioUrl")
-        }
-    }
-})
 ```
 
 ---

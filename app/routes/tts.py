@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.services.elevenlabs_service import elevenlabs_service
+from app.services.sarvam_service import sarvam_service
 from app.utils.logger import logger
 
 router = APIRouter(tags=["Text-to-Speech"])
@@ -14,31 +14,44 @@ class TTSRequest(BaseModel):
         ...,
         min_length=1,
         max_length=5000,
-        description="Text content to convert to realistic speech.",
+        description="Text content to convert to speech.",
         json_schema_extra={"example": "Server is running successfully"},
     )
-    voice_id: Optional[str] = Field(
+    target_language_code: Optional[str] = Field(
         default=None,
-        description="ElevenLabs Voice ID. Defaults to JBFqnCBsd6RMkjVDRZzb if omitted.",
-        json_schema_extra={"example": "JBFqnCBsd6RMkjVDRZzb"},
+        description="Sarvam target language code (e.g., hi-IN, en-IN, ta-IN).",
+        json_schema_extra={"example": "hi-IN"},
+    )
+    speaker: Optional[str] = Field(
+        default=None,
+        description="Sarvam speaker name (e.g. meera, pavithra, arvind).",
+        json_schema_extra={"example": "meera"},
+    )
+    pitch: Optional[float] = Field(
+        default=0.0,
+        description="Sarvam voice pitch modification (-1.0 to 1.0).",
+    )
+    pace: Optional[float] = Field(
+        default=1.0,
+        description="Sarvam voice pace speed multiplier (0.5 to 2.0).",
     )
     model_id: Optional[str] = Field(
         default=None,
-        description="ElevenLabs Model ID. Defaults to eleven_multilingual_v2 if omitted.",
-        json_schema_extra={"example": "eleven_multilingual_v2"},
+        description="Model ID for Sarvam.",
+        json_schema_extra={"example": "bulbul:v1"},
     )
 
 
 class TTSResponse(BaseModel):
     audio_file: str = Field(
         ...,
-        description="Generated MP3 audio filename.",
-        json_schema_extra={"example": "tts_a1b2c3d4e5f6.mp3"},
+        description="Generated audio filename.",
+        json_schema_extra={"example": "sarvam_cache_a1b2c3d4e5f6.wav"},
     )
     audio_url: Optional[str] = Field(
         default=None,
         description="Relative URL to download/stream the generated audio file.",
-        json_schema_extra={"example": "/audio/tts_a1b2c3d4e5f6.mp3"},
+        json_schema_extra={"example": "/audio/sarvam_cache_a1b2c3d4e5f6.wav"},
     )
     cached: Optional[bool] = Field(
         default=False,
@@ -48,17 +61,22 @@ class TTSResponse(BaseModel):
         default=None,
         description="Processing time in milliseconds.",
     )
+    language_code: Optional[str] = Field(
+        default=None,
+        description="Target language code used for synthesis.",
+    )
+    speaker: Optional[str] = Field(
+        default=None,
+        description="Speaker voice used for synthesis.",
+    )
 
 
 @router.post(
     "/text-to-speech",
     response_model=TTSResponse,
     status_code=status.HTTP_200_OK,
-    summary="Convert text to speech MP3 file",
-    description=(
-        "Converts input text to realistic audio speech using ElevenLabs API "
-        "and saves the generated audio file as an MP3."
-    ),
+    summary="Convert text to speech audio file",
+    description="Converts input text to audio speech using Sarvam AI and saves the generated audio file.",
 )
 async def text_to_speech(request: TTSRequest) -> TTSResponse:
     """Handles Text-to-Speech generation request."""
@@ -69,11 +87,15 @@ async def text_to_speech(request: TTSRequest) -> TTSResponse:
         )
 
     try:
-        result = elevenlabs_service.generate_speech(
+        result = await sarvam_service.generate_speech(
             text=request.text.strip(),
-            voice_id=request.voice_id,
-            model_id=request.model_id,
+            target_language_code=request.target_language_code,
+            speaker=request.speaker,
+            pitch=request.pitch,
+            pace=request.pace,
+            model=request.model_id,
         )
+
         return TTSResponse(**result)
 
     except ValueError as ve:
@@ -94,7 +116,7 @@ async def text_to_speech(request: TTSRequest) -> TTSResponse:
     "/text-to-speech/stream",
     status_code=status.HTTP_200_OK,
     summary="Stream text to speech audio chunks",
-    description="Generates speech and streams audio chunks directly as audio/mpeg.",
+    description="Generates speech and streams audio chunks directly.",
 )
 async def text_to_speech_stream(request: TTSRequest) -> StreamingResponse:
     """Handles real-time streaming Text-to-Speech audio generation."""
@@ -105,15 +127,21 @@ async def text_to_speech_stream(request: TTSRequest) -> StreamingResponse:
         )
 
     try:
-        audio_stream = elevenlabs_service.stream_speech(
+        audio_stream = sarvam_service.stream_speech(
             text=request.text.strip(),
-            voice_id=request.voice_id,
-            model_id=request.model_id,
+            target_language_code=request.target_language_code,
+            speaker=request.speaker,
+            pitch=request.pitch,
+            pace=request.pace,
+            model=request.model_id,
         )
+        media_type = "audio/wav"
+        filename = "speech.wav"
+
         return StreamingResponse(
             audio_stream,
-            media_type="audio/mpeg",
-            headers={"Content-Disposition": 'inline; filename="speech.mp3"'},
+            media_type=media_type,
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
     except ValueError as ve:
         raise HTTPException(
