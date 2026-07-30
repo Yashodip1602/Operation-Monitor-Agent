@@ -11,6 +11,23 @@ from app.routes.mic import router as mic_router
 from app.routes.voice_agent import router as voice_agent_router
 from app.utils.logger import logger
 
+from contextlib import asynccontextmanager
+from app.services.sarvam_service import sarvam_service
+from app.services.jenkins_client import jenkins_client
+from app.services.jenkins_browser import jenkins_browser_manager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Executes startup validation and configuration checks."""
+    logger.info("Executing OpsMonit Backend startup diagnostic checks...")
+    sarvam_service.check_api_key_on_startup()
+    jenkins_client.validate_jenkins_connection()
+    jenkins_browser_manager.check_chrome_binary_on_startup()
+    yield
+    logger.info("OpsMonit Backend shutting down...")
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -18,6 +35,7 @@ app = FastAPI(
     description="Production-ready OpsMonit backend with Sarvam AI TTS/STT and Jenkins voice command automation.",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Enable CORS (allow all origins for Kotlin / mobile / web clients)

@@ -27,27 +27,67 @@ class JenkinsClient:
         if self._server is not None:
             return self._server
 
-        url = settings.JENKINS_URL
-        username = settings.JENKINS_USERNAME
-        password = settings.JENKINS_PASSWORD
+        url = settings.JENKINS_URL.rstrip("/") if settings.JENKINS_URL else ""
+        username = (settings.JENKINS_USERNAME or "").strip()
+        password = (settings.JENKINS_PASSWORD or "").strip()
 
         if not url:
             raise JenkinsClientError("Jenkins URL is not configured in environment settings.")
 
+        has_secret = bool(password)
+        auth_mode = f"User '{username}' with secret ({len(password)} chars)" if username and has_secret else ("Anonymous" if not username else f"User '{username}' without secret")
+
+        logger.info(f"Connecting to Jenkins server at {url} | Auth strategy: {auth_mode}")
+
         try:
-            logger.info(f"Connecting to Jenkins server at {url} (user: {username or 'anonymous'})")
             server = jenkins.Jenkins(
                 url=url,
                 username=username if username else None,
                 password=password if password else None,
             )
-            version = server.get_version()
-            logger.info(f"Successfully connected to Jenkins server (version: {version})")
+            # Enable automatic CSRF crumb requester
+            server.crumb = True
+
+            try:
+                version = server.get_version()
+            except Exception as ve:
+                if "403" in str(ve) or "Forbidden" in str(ve):
+                    logger.warning(f"HTTP 403 received getting version. Retrying with explicit auth check...")
+                    # Re-try getting whoami or jobs to confirm if version endpoint is restricted
+                    try:
+                        who = server.get_whoami()
+                        version = f"Authenticated as {who.get('fullName', username)}"
+                    except Exception:
+                        raise ve
+                else:
+                    raise ve
+
+            logger.info(f"Successfully connected to Jenkins server at {url} (version/user: {version})")
             self._server = server
             return self._server
         except Exception as e:
-            logger.error(f"Failed to connect to Jenkins server at {url}: {e}")
-            raise JenkinsClientError(f"Jenkins connection failed: {str(e)}")
+            logger.error(
+                f"Failed to connect to Jenkins server at {url} | Auth mode: {auth_mode} | Error: {e}"
+            )
+            if "403" in str(e) or "Forbidden" in str(e):
+                logger.error(
+                    "CRITICAL: Jenkins HTTP 403 Forbidden error. Please verify JENKINS_USERNAME and JENKINS_PASSWORD in .env "
+                    "and ensure the account has 'Overall/Read' and 'Job/Read' permissions in Jenkins Security configuration."
+                )
+            raise JenkinsClientError(f"Jenkins connection failed ({str(e)}). Check JENKINS_USERNAME and JENKINS_PASSWORD in .env.")
+
+    def validate_jenkins_connection(self) -> bool:
+        """Validates Jenkins server connection on startup and logs detailed diagnostics."""
+        try:
+            server = self._get_server()
+            logger.info("Jenkins configuration validation succeeded.")
+            return True
+        except Exception as e:
+            logger.warning(
+                f"WARNING: Jenkins API connection check failed during startup: {e}. "
+                "Ensure Jenkins is running, credentials in .env are valid, and permissions are granted."
+            )
+            return False
 
     def reset_connection(self) -> None:
         """Resets the cached server instance."""

@@ -71,7 +71,8 @@ async def _execute_voice_pipeline(
     try:
         if intent == IntentType.TRIGGER_BUILD:
             if not job_name:
-                response_text = "Please specify a valid job name to trigger a build."
+                examples = f" For example: {', '.join(known_job_names[:3])}." if known_job_names else ""
+                response_text = f"Please specify a valid job name to trigger a build.{examples}"
                 execution_status = "ERROR"
             else:
                 jenkins_data = trigger_build_via_ui(job_name)
@@ -79,7 +80,8 @@ async def _execute_voice_pipeline(
 
         elif intent == IntentType.GET_STATUS:
             if not job_name:
-                response_text = "Please specify a job name to check status."
+                examples = f" For example: {', '.join(known_job_names[:3])}." if known_job_names else ""
+                response_text = f"Please specify a job name to check status.{examples}"
                 execution_status = "ERROR"
             else:
                 jenkins_data = check_build_status(job_name)
@@ -87,7 +89,8 @@ async def _execute_voice_pipeline(
 
         elif intent == IntentType.STOP_BUILD:
             if not job_name:
-                response_text = "Please specify a job name to stop build."
+                examples = f" For example: {', '.join(known_job_names[:3])}." if known_job_names else ""
+                response_text = f"Please specify a job name to stop build.{examples}"
                 execution_status = "ERROR"
             else:
                 jenkins_data = stop_build_via_ui(job_name)

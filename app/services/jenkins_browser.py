@@ -1,4 +1,4 @@
-import os
+import shutil
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -41,6 +41,48 @@ class JenkinsBrowserManager:
             cls._instance.driver = None
         return cls._instance
 
+    @staticmethod
+    def find_chrome_binary() -> str:
+        """
+        Auto-detects or retrieves configured Chrome/Chromium binary path.
+        Priority: settings.CHROME_BINARY_PATH -> standard Linux installation paths -> PATH lookup.
+        """
+        configured_path = getattr(settings, "CHROME_BINARY_PATH", "/usr/bin/chromium-browser")
+        if configured_path and Path(configured_path).exists():
+            return configured_path
+
+        known_paths = [
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/snap/bin/chromium",
+        ]
+        for path in known_paths:
+            if Path(path).exists():
+                return path
+
+        for name in ["chromium-browser", "chromium", "google-chrome", "google-chrome-stable"]:
+            found = shutil.which(name)
+            if found:
+                return found
+
+        return configured_path or "/usr/bin/chromium-browser"
+
+    def check_chrome_binary_on_startup(self) -> bool:
+        """Verifies Chrome/Chromium binary exists at configured path during app startup."""
+        binary_path = self.find_chrome_binary()
+        if Path(binary_path).exists():
+            logger.info(f"Chrome/Chromium binary validated successfully at: '{binary_path}'")
+            return True
+        else:
+            logger.error(
+                f"ERROR: Cannot find Chrome/Chromium binary at '{binary_path}'. "
+                "Jenkins browser automation will fail until installed. "
+                "Please run on server: 'sudo apt update && sudo apt install -y chromium-browser chromium-chromedriver'"
+            )
+            return False
+
     def get_driver(self) -> webdriver.Chrome:
         """
         Retrieves or initializes a reusable Chrome WebDriver instance using webdriver-manager.
@@ -54,28 +96,36 @@ class JenkinsBrowserManager:
                 logger.warning(f"Existing WebDriver instance non-responsive, recreating: {e}")
                 self.close_browser(force=True)
 
-        logger.info("Initializing Selenium Chrome WebDriver with webdriver-manager...")
+        binary_path = self.find_chrome_binary()
+        logger.info(f"Initializing Selenium Chrome WebDriver using binary at: '{binary_path}'...")
+
         chrome_options = Options()
 
-        if settings.HEADLESS_BROWSER:
-            logger.info("Configuring Chrome in headless mode.")
-            chrome_options.add_argument("--headless=new")
-
-        chrome_options.add_argument("--start-maximized")
-        chrome_options.add_argument("--disable-gpu")
+        # Headless mode for server / no-GUI environments
+        chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
         chrome_options.add_argument("--disable-notifications")
+
+        chrome_options.binary_location = binary_path
 
         try:
             service = Service(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             self.driver.set_page_load_timeout(30)
-            logger.info("Chrome WebDriver successfully initialized.")
+            logger.info(f"Chrome WebDriver successfully initialized with binary '{binary_path}' in headless mode.")
             return self.driver
         except Exception as e:
-            logger.error(f"Failed to initialize Chrome WebDriver: {e}", exc_info=True)
-            raise JenkinsBrowserError(f"Failed to launch Chrome browser: {str(e)}")
+            logger.error(
+                f"Failed to initialize Chrome WebDriver using binary at '{binary_path}': {e}. "
+                "Ensure chromium-browser is installed ('sudo apt install -y chromium-browser chromium-chromedriver').",
+                exc_info=True,
+            )
+            raise JenkinsBrowserError(
+                f"Failed to launch Chrome browser using binary '{binary_path}' ('{str(e)}'). Verify binary path exists."
+            )
 
     def close_browser(self, force: bool = False) -> None:
         """Closes the Chrome browser session unless KEEP_BROWSER_OPEN is True (and force is False)."""
