@@ -35,8 +35,13 @@ class Settings:
     JENKINS_USERNAME: str = os.getenv("JENKINS_USERNAME", "")
     JENKINS_PASSWORD: str = os.getenv("JENKINS_PASSWORD", "")
     KEEP_BROWSER_OPEN: bool = os.getenv("KEEP_BROWSER_OPEN", "True").lower() in ("true", "1", "t")
-    HEADLESS_BROWSER: bool = os.getenv("HEADLESS_BROWSER", "False").lower() in ("true", "1", "t")
+    HEADLESS_BROWSER: bool = os.getenv("HEADLESS_BROWSER", "True").lower() in ("true", "1", "t")
+    CHROME_BINARY_PATH: str = os.getenv("CHROME_BINARY_PATH", "/usr/bin/chromium-browser")
     SCREENSHOT_DIR: Path = BASE_DIR / "app/static/screenshots"
+
+    # External API Settings
+    EXTERNAL_API_BASE_URL: str = os.getenv("EXTERNAL_API_BASE_URL", "http://13.202.2.200:8000")
+    EXTERNAL_API_TOKEN: str = os.getenv("EXTERNAL_API_TOKEN", "")
 
 
     def __init__(self) -> None:

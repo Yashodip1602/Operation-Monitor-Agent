@@ -53,6 +53,22 @@ def test_voice_command_trigger_build_browser(mock_get_jobs, mock_trigger_ui, moc
 
 
 @patch("app.routes.voice_agent.sarvam_service.generate_speech")
+@patch("app.routes.voice_agent.jenkins_client.get_all_jobs")
+def test_missing_job_name_with_suggestions(mock_get_jobs, mock_tts):
+    mock_get_jobs.return_value = [{"name": "blog-app-dev"}, {"name": "my-project"}]
+    mock_tts.return_value = {"audio_file": "sugg.wav", "audio_url": "/audio/sugg.wav"}
+
+    response = client.post(
+        "/voice-agent/command-text",
+        json={"text": "Trigger build"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["execution_status"] == "ERROR"
+    assert "blog-app-dev" in data["response_text"] or "my-project" in data["response_text"]
+
+
+@patch("app.routes.voice_agent.sarvam_service.generate_speech")
 @patch("app.routes.voice_agent.check_build_status")
 @patch("app.routes.voice_agent.jenkins_client.get_all_jobs")
 def test_voice_command_get_status_browser(mock_get_jobs, mock_status_ui, mock_tts):

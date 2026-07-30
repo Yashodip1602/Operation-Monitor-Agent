@@ -21,12 +21,25 @@ class SarvamService:
 
     def _get_api_key(self) -> str:
         """Retrieves and validates Sarvam API key."""
-        api_key = settings.SARVAM_API_KEY
+        api_key = (settings.SARVAM_API_KEY or "").strip()
         if not api_key or api_key == "your_sarvam_api_key_here":
+            logger.error("Sarvam API Key is missing or set to placeholder in .env file.")
             raise ValueError(
                 "Sarvam API Key is not configured. Please set SARVAM_API_KEY in .env file."
             )
         return api_key
+
+    def check_api_key_on_startup(self) -> bool:
+        """Checks if SARVAM_API_KEY is configured on startup and logs a warning if missing."""
+        api_key = (settings.SARVAM_API_KEY or "").strip()
+        if not api_key or api_key == "your_sarvam_api_key_here":
+            logger.warning(
+                "WARNING: SARVAM_API_KEY is not configured or is set to placeholder in .env file. "
+                "TTS and STT requests will fail until a valid key is provided."
+            )
+            return False
+        logger.info("Sarvam API Key configuration verified successfully.")
+        return True
 
     def _get_headers(self) -> Dict[str, str]:
         """Returns HTTP headers required for Sarvam API requests."""

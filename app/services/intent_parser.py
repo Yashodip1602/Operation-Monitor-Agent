@@ -1,3 +1,4 @@
+import difflib
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from app.utils.logger import logger
@@ -43,12 +44,12 @@ class IntentParser:
     """Parses user spoken text commands to determine Jenkins action and target job."""
 
     STOP_KEYWORDS = ["stop", "abort", "cancel", "kill", "halt", "terminate"]
-    TRIGGER_KEYWORDS = ["trigger", "start", "run", "build", "execute", "launch"]
+    TRIGGER_KEYWORDS = ["trigger", "start", "run", "build", "execute", "launch", "deploy"]
     STATUS_KEYWORDS = ["status", "state", "check", "how is", "info"]
     LOGS_KEYWORDS = ["log", "logs", "console", "output"]
     LIST_KEYWORDS = ["list", "show all", "all jobs", "available jobs"]
 
-    PREPOSITIONS = ["for", "of", "the", "job", "project", "build", "called", "named", "on", "in", "to"]
+    PREPOSITIONS = ["for", "of", "the", "job", "project", "build", "called", "named", "on", "in", "to", "app"]
 
     def parse(
         self,
@@ -82,6 +83,10 @@ class IntentParser:
         # Special case: if user said "list jobs" or similar, job_name is None
         if intent == IntentType.UNKNOWN and any(kw in cleaned_text for kw in ["job", "jobs"]):
             intent = IntentType.LIST_JOBS
+
+        # If job_name was matched via fuzzy/exact matching but intent was UNKNOWN, default to TRIGGER_BUILD or GET_STATUS if keywords match
+        if intent == IntentType.UNKNOWN and job_name:
+            intent = IntentType.TRIGGER_BUILD
 
         logger.info(f"Intent parsed: intent='{intent}', job_name='{job_name}'")
         return IntentParseResult(
@@ -120,7 +125,7 @@ class IntentParser:
         if self._has_keyword(text, self.STATUS_KEYWORDS):
             return IntentType.GET_STATUS
 
-        # Trigger / Build keywords
+        # Trigger / Build / Deploy keywords
         if self._has_keyword(text, self.TRIGGER_KEYWORDS):
             return IntentType.TRIGGER_BUILD
 
@@ -131,45 +136,64 @@ class IntentParser:
         text: str,
         known_jobs: Optional[List[str]] = None,
     ) -> Optional[str]:
-        """Extracts job name from command text, leveraging known_jobs list if available."""
-        # If known_jobs provided, check for direct or normalized match
+        """Extracts job name from command text, leveraging known_jobs list and fuzzy matching."""
+        # 1. Exact or normalized substring match against known_jobs
         if known_jobs:
             for job in known_jobs:
                 job_clean = job.lower().replace("-", " ").replace("_", " ")
-                # Check if exact job name is substring
                 if job.lower() in text:
                     return job
-                # Check normalized job name
                 if job_clean in text.replace("-", " ").replace("_", " "):
                     return job
 
-        # Fallback to pattern matching / preposition extraction
-        # e.g., "trigger build for my-project" -> extract "my-project"
+        # 2. Position-independent pattern matching (job before OR after keyword)
+        # e.g., "blog-app-dev deploy", "deploy app blog-app-dev", "trigger build for blog-app-dev"
         patterns = [
+            r"([a-zA-Z0-9\-_]+)\s+(?:deploy|build|job|status|trigger|run|start|stop|abort)",
             r"(?:for|of|job|project|named|called)\s+([a-zA-Z0-9\-_]+)",
-            r"(?:trigger|start|run|build|status|check|stop|abort|logs?)\s+(?:build|job)?\s*([a-zA-Z0-9\-_]+)",
-            r"([a-zA-Z0-9\-_]+)\s+(?:build|status|job)",
+            r"(?:trigger|start|run|build|deploy|status|check|stop|abort|logs?)\s+(?:build|job|project|app)?\s*([a-zA-Z0-9\-_]+)",
         ]
+
+        action_words = set(self.STOP_KEYWORDS + self.TRIGGER_KEYWORDS + self.STATUS_KEYWORDS + self.LOGS_KEYWORDS + self.PREPOSITIONS)
 
         for pattern in patterns:
             match = re.search(pattern, text)
             if match:
                 candidate = match.group(1).strip()
-                # Filter out generic action keywords
-                if candidate not in self.STOP_KEYWORDS + self.TRIGGER_KEYWORDS + self.STATUS_KEYWORDS + self.LOGS_KEYWORDS + self.PREPOSITIONS:
+                if candidate and candidate not in action_words:
+                    if known_jobs and candidate not in known_jobs:
+                        matches = difflib.get_close_matches(candidate.lower(), [j.lower() for j in known_jobs], n=1, cutoff=0.5)
+                        if matches:
+                            matched_lower = matches[0]
+                            for j in known_jobs:
+                                if j.lower() == matched_lower:
+                                    logger.info(f"Fuzzy matched extracted candidate '{candidate}' to known job '{j}'")
+                                    return j
                     return candidate
 
-        # Token filtering fallback: remove keywords and prepositions
+        # 3. Fuzzy matching fallback using difflib against known_jobs
+        if known_jobs:
+            words = text.split()
+            # Try single tokens and pairs of tokens
+            candidates_to_test = words + [f"{words[i]}-{words[i+1]}" for i in range(len(words)-1)]
+            for token in candidates_to_test:
+                clean_token = token.strip().lower()
+                if clean_token in action_words or len(clean_token) < 2:
+                    continue
+                matches = difflib.get_close_matches(clean_token, [j.lower() for j in known_jobs], n=1, cutoff=0.55)
+                if matches:
+                    matched_lower = matches[0]
+                    for j in known_jobs:
+                        if j.lower() == matched_lower:
+                            logger.info(f"Fuzzy matched '{token}' to known job '{j}'")
+                            return j
+
+        # 4. Token filtering fallback: remove keywords and prepositions
         words = text.split()
         filtered = [
             w for w in words
-            if w not in self.STOP_KEYWORDS
-            and w not in self.TRIGGER_KEYWORDS
-            and w not in self.STATUS_KEYWORDS
-            and w not in self.LOGS_KEYWORDS
-            and w not in self.LIST_KEYWORDS
-            and w not in self.PREPOSITIONS
-            and w not in ["what", "is", "the", "a", "an", "please", "can", "you", "my"]
+            if w not in action_words
+            and w not in ["what", "is", "the", "a", "an", "please", "can", "you", "my", "in", "jenkins"]
         ]
 
         if filtered:
