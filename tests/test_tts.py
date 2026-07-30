@@ -13,9 +13,10 @@ def test_tts_empty_text_returns_400():
 
 def test_sarvam_tts_missing_api_key_handling():
     """Test POST /text-to-speech without valid API key returns proper error."""
-    response = client.post("/text-to-speech", json={"text": "Hello OpsMonit"})
-    assert response.status_code == 400
-    assert "Sarvam API Key" in response.json()["detail"]
+    with patch("app.services.sarvam_service.settings.SARVAM_API_KEY", ""):
+        response = client.post("/text-to-speech", json={"text": "Hello OpsMonit"})
+        assert response.status_code == 400
+        assert "Sarvam API Key" in response.json()["detail"]
 
 
 def test_sarvam_tts_cached_response(tmp_path):

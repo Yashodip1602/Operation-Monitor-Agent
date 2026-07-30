@@ -18,8 +18,8 @@ class Settings:
     SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "your_sarvam_api_key_here")
     SARVAM_TTS_URL: str = os.getenv("SARVAM_TTS_URL", "https://api.sarvam.ai/text-to-speech")
     SARVAM_STT_URL: str = os.getenv("SARVAM_STT_URL", "https://api.sarvam.ai/speech-to-text")
-    DEFAULT_SARVAM_MODEL: str = os.getenv("DEFAULT_SARVAM_MODEL", "bulbul:v1")
-    DEFAULT_SARVAM_SPEAKER: str = os.getenv("DEFAULT_SARVAM_SPEAKER", "meera")
+    DEFAULT_SARVAM_MODEL: str = os.getenv("DEFAULT_SARVAM_MODEL", "bulbul:v2")
+    DEFAULT_SARVAM_SPEAKER: str = os.getenv("DEFAULT_SARVAM_SPEAKER", "anushka")
     DEFAULT_SARVAM_LANGUAGE: str = os.getenv("DEFAULT_SARVAM_LANGUAGE", "hi-IN")
     DEFAULT_STT_MODEL: str = os.getenv("DEFAULT_STT_MODEL", "saaras:v1")
 
